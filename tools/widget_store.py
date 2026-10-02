@@ -3,7 +3,8 @@
 All files live in <data_root>/<widget_dir>/ (default "_widget"), i.e. with the user's data —
 never in the skill repo.
 
-    inbox.jsonl      append-only events written by the widget (done / undone / comment / snooze / unsnooze)
+    inbox.jsonl      append-only events written by the widget (done / undone / comment / snooze / unsnooze, and
+                     capture / uncapture: a quick-added new task, or withdrawing one before /pa files it)
     processed.txt    event ids /pa has handled (append-only; the inbox itself is never rewritten)
     details.json     {"updated": ts, "focus": [task ids], "details": {task id: {"text", "updated"}}, "plan": {...}}
     nudges.json      {task id: {"when": the task's date when nudged, "dates": [days /pa raised it]}}
@@ -15,10 +16,11 @@ import json
 import os
 import secrets
 import threading
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
-EVENT_TYPES = {"done", "undone", "comment", "snooze", "unsnooze"}
+EVENT_TYPES = {"done", "undone", "comment", "snooze", "unsnooze", "capture", "uncapture"}
+CAPTURE_MAX = 500  # characters; a quick add is a sentence, the assistant writes the task properly
 _lock = threading.Lock()
 
 
@@ -96,6 +98,37 @@ class Store:
             elif not acked and e["type"] in ("snooze", "unsnooze"):
                 s["snooze"] = e.get("until") if e["type"] == "snooze" else None
         return states
+
+    # ---- quick add: new tasks in the user's words, for /pa to write properly --------------------
+    def capture(self, text: str, area: str = "", due: str | None = None, folders=frozenset()) -> dict:
+        """Queue a new task. Raises ValueError with a message fit to show the user."""
+        text = " ".join(str(text or "").split())          # one line, however it was typed
+        if not text:
+            raise ValueError("empty task")
+        if len(text) > CAPTURE_MAX:
+            raise ValueError(f"too long — keep it under {CAPTURE_MAX} characters; details can follow as a comment")
+        area = str(area or "")
+        if area and area not in folders:
+            raise ValueError(f"unknown area '{area}'")
+        event = {"type": "capture", "text": text, "area": area}
+        if due:
+            try:
+                event["due"] = date.fromisoformat(str(due)).isoformat()
+            except ValueError:
+                raise ValueError("bad date") from None
+        return self.append_event(event)
+
+    def uncapture(self, eid: str) -> dict:
+        if not any(c["eid"] == eid for c in self.captures()):
+            raise ValueError("not a quick add waiting to be filed")
+        return self.append_event({"type": "uncapture", "ref": eid})
+
+    def captures(self) -> list[dict]:
+        """Quick adds /pa has not filed yet and the user has not withdrawn, oldest first."""
+        events = self.events()
+        gone = self.processed_ids() | {e.get("ref") for e in events if e["type"] == "uncapture"}
+        return [{k: e[k] for k in ("eid", "ts", "text", "area", "due") if k in e}
+                for e in events if e["type"] == "capture" and e["eid"] not in gone]
 
     # ---- focus + details ----------------------------------------------------------------------
     def details(self) -> dict:

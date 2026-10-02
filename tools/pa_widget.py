@@ -16,7 +16,7 @@ Handlers are loaded once, when the server starts; a failing handler takes down o
 Nothing outside what the manifests declare is reachable.
 
 The page always reads tasks.md live, so edits made by /pa (or by hand) show up on the next refresh.
-The widget never edits tasks.md: ticks, comments and snoozes go to the inbox for /pa to apply.
+The widget never edits tasks.md: ticks, comments, snoozes and quick-added tasks go to the inbox for /pa to apply.
 """
 from __future__ import annotations
 
@@ -164,6 +164,7 @@ def build_data(root: Path, cfg: dict, store: Store, today: date | None = None,
         d = det.get("details", {}).get(t["id"] or "")
         t["detail"] = d["text"] if d else None
         t["detail_updated"] = d["updated"] if d else None
+    data["captures"] = store.captures()
     open_ids = {t["id"] for t in data["tasks"] if t["id"]}
     mine = {t["id"] for t in data["tasks"] if t["id"] and t["owner"] != "assistant"}
     data["focus"] = [i for i in det.get("focus", []) if i in mine]
@@ -486,6 +487,14 @@ def make_handler(root: Path, cfg: dict, store: Store, port_ref: list[int]):
             etype, tid = body.get("type"), body.get("task_id")
             if etype not in EVENT_TYPES:
                 return self._json(400, {"error": "bad type"})
+            if etype in ("capture", "uncapture"):   # quick add: a new task, queued in the user's words
+                try:
+                    if etype == "uncapture":
+                        return self._json(200, store.uncapture(str(body.get("ref", ""))))
+                    folders = {a.path.parent.name for a in due.load_areas(root, cfg)}
+                    return self._json(200, store.capture(body.get("text"), body.get("area"), body.get("due"), folders))
+                except ValueError as exc:
+                    return self._json(400, {"error": str(exc)})
             task = next((t for a in due.load_areas(root, cfg) for t in a.tasks if t.id and t.id == tid), None)
             if not task:
                 return self._json(400, {"error": "unknown task id"})

@@ -44,6 +44,13 @@
   .help dt { text-align: right; }
   .help dd { margin: 0; color: var(--muted); }
   .help .close { margin-top: 12px; }
+  /* quick add: a new task in the user's own words, filed properly by the assistant at its next run */
+  .addform input[type=text], .addform select, .addform input[type=date] { font: inherit; color: var(--ink);
+    background: var(--bg); border: 1px solid var(--line); border-radius: 7px; padding: 5px 8px; }
+  .addform input[type=text] { width: 100%; }
+  .addform .addrow { display: flex; flex-wrap: wrap; gap: 8px 14px; margin: 10px 0 4px; }
+  .addform label { color: var(--muted); font-size: 12.5px; display: flex; align-items: center; gap: 6px; }
+  .addform .err { color: var(--warn); font-size: 12.5px; margin: 6px 0 0; }
   kbd { font: inherit; font-size: 11.5px; background: var(--chip); border: 1px solid var(--line); border-radius: 4px;
         padding: 0 5px; }
   /* brand row: the assistant's mark and name, above both columns */
@@ -276,6 +283,7 @@
     <h1 id="title">PA</h1>
     <span class="sub" id="subtitle"></span>
     <span class="spacer"></span>
+    <button id="addbtn" title="Add a task (n)">+ Add</button>
     <button id="filterbtn" aria-pressed="false" title="Choose which areas are shown">Areas</button>
     <button id="refresh" title="Reload from tasks.md">Refresh</button>
   </header>
@@ -289,7 +297,8 @@
 </div>
 </div>
 <footer class="sig">Aayush Soni · <a href="https://github.com/AayushSo" rel="noopener noreferrer">github.com/AayushSo</a></footer>
-<div class="helpwrap" id="helpwrap" hidden><div class="help" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts"><h2>Keyboard</h2><dl><dt><kbd>t</kbd></dt><dd>Today tab</dd><dt><kbd>w</kbd></dt><dd>Week tab</dd><dt><kbd>a</kbd></dt><dd>All tab</dd><dt><kbd>←</kbd></dt><dd>previous week (Week tab)</dd><dt><kbd>→</kbd></dt><dd>next week (Week tab)</dd><dt><kbd>/</kbd></dt><dd>search all tasks</dd><dt><kbd>r</kbd></dt><dd>reload from tasks.md</dd><dt><kbd>Enter</kbd></dt><dd>open the task the keyboard is on</dd><dt><kbd>?</kbd></dt><dd>this panel</dd><dt><kbd>Esc</kbd></dt><dd>close</dd></dl><p class="sub">Tick, comment and snooze with the mouse; nothing here edits tasks.md directly.</p><button class="iconbtn close" id="helpclose">Close</button></div></div>
+<div class="helpwrap" id="helpwrap" hidden><div class="help" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts"><h2>Keyboard</h2><dl><dt><kbd>t</kbd></dt><dd>Today tab</dd><dt><kbd>w</kbd></dt><dd>Week tab</dd><dt><kbd>a</kbd></dt><dd>All tab</dd><dt><kbd>←</kbd></dt><dd>previous week (Week tab)</dd><dt><kbd>→</kbd></dt><dd>next week (Week tab)</dd><dt><kbd>/</kbd></dt><dd>search all tasks</dd><dt><kbd>r</kbd></dt><dd>reload from tasks.md</dd><dt><kbd>Enter</kbd></dt><dd>open the task the keyboard is on</dd><dt><kbd>n</kbd></dt><dd>add a task</dd><dt><kbd>?</kbd></dt><dd>this panel</dd><dt><kbd>Esc</kbd></dt><dd>close</dd></dl><p class="sub">Tick, comment, snooze and add with the mouse; nothing here edits tasks.md directly.</p><button class="iconbtn close" id="helpclose">Close</button></div></div>
+<div class="helpwrap" id="addwrap" hidden><div class="help addform" role="dialog" aria-modal="true" aria-label="Add a task"><h2>Add a task</h2><input type="text" id="addtext" maxlength="500" autocomplete="off" placeholder="What needs doing, in your own words"><div class="addrow"><label>Area <select id="addarea"></select></label><label>By <input type="date" id="adddue"></label></div><p class="sub" id="addnote"></p><p class="err" id="adderr" hidden></p><div class="actions"><button class="primary" id="addsave">Add</button><button id="addcancel">Cancel</button></div></div></div>
 <div class="popover" id="filterpop" hidden></div>
 
 <script>
@@ -422,6 +431,66 @@ function cycleTheme() {
   theme = THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length];
   try { localStorage.setItem(THEME_STORE, theme); } catch (_) {}
   applyTheme();
+}
+
+// ---------- quick add ----------
+function openAdd() {
+  const d = state.data;
+  if (!d) return;
+  const sel = document.getElementById("addarea");
+  const visible = d.areas.filter(a => !hiddenAreas.has(a.folder));
+  sel.replaceChildren($("option", { value: "", text: `Let ${helperName()} decide` }),
+                      ...d.areas.map(a => $("option", { value: a.folder, text: a.name })));
+  sel.value = visible.length === 1 ? visible[0].folder : "";   // filtered to one area: that is the likely home
+  const due = document.getElementById("adddue");
+  due.value = ""; due.min = d.today;
+  document.getElementById("addnote").textContent =
+    `${helperName()} writes it into tasks.md at its next run, with a title and a date. Enter adds it.`;
+  document.getElementById("adderr").hidden = true;
+  document.getElementById("addwrap").hidden = false;
+  document.getElementById("addtext").focus();
+}
+function closeAdd() { document.getElementById("addwrap").hidden = true; }
+async function saveAdd() {
+  const input = document.getElementById("addtext");
+  const err = document.getElementById("adderr");
+  const text = input.value.trim();
+  if (!text) { err.textContent = "Type the task first."; err.hidden = false; return; }
+  const event = { type: "capture", text, area: document.getElementById("addarea").value };
+  const due = document.getElementById("adddue").value;
+  if (due) event.due = due;
+  try {
+    const r = await fetch("/api/event", { method: "POST", headers: { "X-PA-Key": key, "Content-Type": "application/json" },
+                                          body: JSON.stringify(event) });
+    const body = await r.json();
+    if (!r.ok) throw new Error(body.error || r.statusText);
+  } catch (e) {
+    err.textContent = `Not added: ${e.message}`; err.hidden = false;   // keep what was typed
+    return;
+  }
+  input.value = "";
+  closeAdd();
+  await load();
+}
+
+// New tasks from quick add, until the assistant files them. The × withdraws one.
+function capturesSection(d) {
+  const caps = d.captures || [];
+  if (!caps.length) return null;
+  const names = new Map(d.areas.map(a => [a.folder, a.name]));
+  const folded = isFolded("sec:captures");
+  const head = $("h2", {}, $("button", { class: "sechead", "aria-expanded": String(!folded), onclick: () => setFold("sec:captures", !folded) },
+    $("span", { class: "chev", text: "▾" }), `New — waiting for ${helperName()}`, $("span", { class: "count", text: caps.length })));
+  const row = c => $("div", { class: "task" }, $("div", { class: "row" },
+    $("span", { class: "tickspace" }),
+    $("div", { class: "main" }, $("div", { class: "text", text: c.text }), $("div", { class: "meta" },
+      $("span", { class: "chip", text: c.area ? (names.get(c.area) || c.area) : `${helperName()} picks the area` }),
+      c.due ? $("span", { class: "chip", text: `by ${fmtDay(c.due, { day: "numeric", month: "short" })}` }) : null,
+      $("span", { class: "chip pend", text: `added ${relTime(c.ts)}` }))),
+    $("button", { class: "iconbtn", title: "Withdraw it before it is filed", "aria-label": "Withdraw",
+                  onclick: () => send({ type: "uncapture", ref: c.eid }) }, "×")));
+  return $("section", { class: `captures${folded ? " collapsed" : ""}` }, head,
+           folded ? null : $("div", { class: "list" }, caps.map(row)));
 }
 
 // ---------- keyboard help ----------
@@ -925,6 +994,7 @@ function renderToday(d) {
   const o = { showArea: !soloArea };
   return [
     assistantSection(d),
+    capturesSection(d),
     filterNotice(d, candidates),
     ...(today0 ? phaseBanners(today0) : []),
     today0 ? nowCard(d, today0) : null,
@@ -967,7 +1037,8 @@ function renderNotices(d) {
   box.replaceChildren();
   if (state.error) { box.append($("div", { class: "notice warn", text: state.error })); return; }
   if (!d) return;
-  const pending = d.tasks.reduce((n, t) => n + (t.pending_done ? 1 : 0) + (t.pending_snooze ? 1 : 0) + t.comments.filter(c => !c.filed).length, 0);
+  const pending = d.tasks.reduce((n, t) => n + (t.pending_done ? 1 : 0) + (t.pending_snooze ? 1 : 0) + t.comments.filter(c => !c.filed).length, 0)
+    + (d.captures || []).length;
   // Worth interrupting for: what the user must keep in mind today, with no heading to read past.
   for (const c of d.context || []) box.append($("div", { class: "notice ctx" },
     $("span", { class: "bang", text: "!" }),
@@ -1043,9 +1114,10 @@ nb.addEventListener("keydown", ev => { if (ev.key === "Enter") goToSchedule(); }
 const typing = () => ["TEXTAREA", "INPUT"].includes(document.activeElement?.tagName);
 document.addEventListener("visibilitychange", () => { if (!document.hidden && !typing()) { load(); if (state.tab === "week" && state.week.start) loadWeek(state.week.start); } });
 document.addEventListener("keydown", ev => {
-  if (ev.key === "Escape") { toggleHelp(false); if (state.filterOpen) { state.filterOpen = false; render(); } return; }
+  if (ev.key === "Escape") { toggleHelp(false); closeAdd(); if (state.filterOpen) { state.filterOpen = false; render(); } return; }
   if (typing() || ev.ctrlKey || ev.metaKey || ev.altKey) return;
   if (ev.key === "?") { ev.preventDefault(); toggleHelp(); return; }
+  if (ev.key === "n") { ev.preventDefault(); return openAdd(); }
   if (ev.key === "t") return setTab("today");
   if (ev.key === "a") return setTab("all");
   if (ev.key === "w" && !document.getElementById("weektab").hidden) return setTab("week");
@@ -1065,6 +1137,11 @@ document.getElementById("helpwrap").addEventListener("click", ev => {
   if (ev.target.id === "helpwrap") toggleHelp(false);     // clicking the backdrop closes it
 });
 document.getElementById("themebtn").addEventListener("click", cycleTheme);
+document.getElementById("addbtn").addEventListener("click", openAdd);
+document.getElementById("addsave").addEventListener("click", saveAdd);
+document.getElementById("addcancel").addEventListener("click", closeAdd);
+document.getElementById("addtext").addEventListener("keydown", ev => { if (ev.key === "Enter") { ev.preventDefault(); saveAdd(); } });
+document.getElementById("addwrap").addEventListener("click", ev => { if (ev.target.id === "addwrap") closeAdd(); });
 applyTheme();
 setInterval(() => { if (!document.hidden && !typing()) load(); }, 120000);
 // Keep NOW / past blocks current between data refreshes.

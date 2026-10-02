@@ -12,6 +12,8 @@
     python widgetctl.py plan --clear [--date D]        remove the day's plan
     python widgetctl.py note <id> "text"      leave a comment on a task for /pa to read at its next run
         For sessions that are not running /pa: it queues a note instead of editing tasks.md.
+    python widgetctl.py capture "text" [--area <folder>] [--due D]   propose a new task (what the widget's + does)
+        Also for other sessions: /pa writes it as a proper task at its next run.
     python widgetctl.py nudge <id> [<id>...]  record that the briefing raised these tasks today (one count per day)
     python widgetctl.py prune                 drop details, nudges and past plans of tasks that are no longer open
     python widgetctl.py url                   print the widget URL with the access key masked
@@ -62,6 +64,7 @@ def main() -> int:
     p = sub.add_parser("plan"); p.add_argument("id", nargs="?"); p.add_argument("block", nargs="?")
     p.add_argument("--date", type=due.date.fromisoformat); p.add_argument("--clear", action="store_true")
     p = sub.add_parser("note"); p.add_argument("id"); p.add_argument("text")
+    p = sub.add_parser("capture"); p.add_argument("text"); p.add_argument("--area", default=""); p.add_argument("--due")
     p = sub.add_parser("nudge"); p.add_argument("ids", nargs="+")
     sub.add_parser("prune")
     p = sub.add_parser("url"); p.add_argument("--show-key", action="store_true")
@@ -82,10 +85,27 @@ def main() -> int:
         if not pending:
             print("Widget inbox: nothing pending.")
             return 0
+        quick = [e for e in pending if e["type"] in ("capture", "uncapture")]
         by_task: dict[str, list[dict]] = {}
         for e in pending:
-            by_task.setdefault(e.get("task_id", "?"), []).append(e)
-        print(f"Widget inbox: {len(pending)} pending event(s) on {len(by_task)} task(s)\n")
+            if e not in quick:
+                by_task.setdefault(e.get("task_id", "?"), []).append(e)
+        print(f"Widget inbox: {len(pending)} pending event(s) on {len(by_task)} task(s)"
+              + (f" and {len(quick)} quick add event(s)" if quick else "") + "\n")
+        if quick:
+            live = {c["eid"] for c in store.captures()}
+            new = [e for e in quick if e["eid"] in live]
+            withdrawn = [e["eid"] for e in quick if e["eid"] not in live]
+            if new:
+                print("NEW TASKS (quick add) — write each as a proper task in its area (SKILL.md section 3), then ack:")
+                for e in new:
+                    hints = [f"area: {e['area']}" if e.get("area") else "area: you decide (ask if unclear)"]
+                    if e.get("due"):
+                        hints.append(f"by {e['due']}")
+                    print(f"    {e['eid']}  {e['ts']}  [{' · '.join(hints)}]  {e['text']}")
+            if withdrawn:
+                print(f"Quick adds withdrawn before filing — nothing to write, just ack: {' '.join(withdrawn)}")
+            print()
         for tid, evs in by_task.items():
             t = tasks.get(tid)
             where = f"{t.folder}/tasks.md:{t.line}  {t.text}" if t else f"(no open task with id {tid}) last seen as: {evs[-1].get('text', '')}"
@@ -126,6 +146,17 @@ def main() -> int:
         print(f"Noted on {args.id} ({task.area}): {text[:80]}")
         print(f"  task: {task.text[:90]}")
         print(f"  the assistant reads it at its next run (event {event['eid']})")
+        return 0
+
+    if args.cmd == "capture":
+        folders = {a.path.parent.name for a in due.load_areas(root, cfg)}
+        try:
+            event = store.capture(args.text, args.area, args.due, folders)
+        except ValueError as exc:
+            print(f"Not queued: {exc}." + (f" Areas: {', '.join(sorted(folders))}" if "area" in str(exc) else ""))
+            return 2
+        print(f"Queued a new task{f' for {args.area}' if args.area else ''}: {event['text'][:90]}")
+        print(f"  the assistant writes it into tasks.md at its next run (event {event['eid']})")
         return 0
 
     if args.cmd == "nudge":

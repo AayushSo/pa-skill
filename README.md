@@ -55,8 +55,10 @@ a failing one only affects its own area. `python tools/areas.py list` shows what
 
 ## Widget
 
-A local page with a tickbox per task, a click-open panel (detail, comments) and snooze. It never edits
-`tasks.md`: ticks, comments and snoozes go to an inbox that `/pa` applies at its next run (see `SKILL.md` §8).
+A local page with a tickbox per task, a click-open panel (detail, comments), snooze and **+ Add** (or `n`): type a
+new task in your own words, optionally with an area and a date, and the assistant writes it up properly at its next
+run. It never edits `tasks.md`: ticks, comments, snoozes and new tasks go to an inbox that `/pa` applies at its next
+run (see `SKILL.md` §8).
 
 ```bash
 python tools/open_widget.py            # start the server (127.0.0.1, access-key protected) and open the window
@@ -124,7 +126,8 @@ task has been raised without being done (shown as `nudged N×`, reset when the t
 
 `<data_root>/CLAUDE.md` and a line in each `tasks.md` / `done.md` header tell sessions that are not running the
 skill to treat the records as read-only: read them for context, but leave changes to the skill. Such a session can
-queue a comment with `widgetctl.py note <task id> "…"` instead of editing a task.
+queue a comment with `widgetctl.py note <task id> "…"`, or propose a new task with `widgetctl.py capture "…"`,
+instead of editing the records.
 
 ## Snapshots
 
