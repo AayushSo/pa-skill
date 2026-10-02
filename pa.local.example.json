@@ -10,6 +10,7 @@
   "context_file": "context.md",
   "stale_after_days": 7,
   "no_stale_check": [],
+  "chase_days": 14,
   "widget_dir": "_widget",
   "widget_port": 8765,
   "widget_days": 7,

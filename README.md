@@ -1,7 +1,7 @@
 # pa — a personal-assistant skill for Claude Code
 
 A `/pa` skill that tracks life areas as plain Markdown task files and gives a daily briefing:
-overdue, due soon, status unknown, waiting on someone.
+overdue, due soon, status unknown, follow-ups due, waiting on someone.
 
 **This repo holds code only, and nothing about any particular area.** Your tasks, notes, settings — and any tools
 or pages a single area needs — live in your own data folders, which are never committed. The skill only knows how
@@ -100,6 +100,13 @@ top — no tickbox, with each one's last run and result from `done.md`. The agen
 A task whose point is the information carries a `yields:` field naming what it owes (a conclusion, a decision, a
 number and what it implies). Recording the data does not close such a task: `widgetctl.py ack` refuses it without
 `--outcome "what it says · what changes · next step"`, and the briefing ends with "What this changes".
+
+## Waiting and follow-ups
+
+A task blocked on someone else carries `waiting:` and a `chase:` date — the day to follow up if nothing has come back
+(default `chase_days`, 14). It stays listed under "Waiting on someone" until then; from that day the briefing and the
+widget list it under **Follow up** and ask: chase them, keep waiting, or close it. Snoozing a waiting task in the
+widget sets its chase date.
 
 ## Memory between sessions
 

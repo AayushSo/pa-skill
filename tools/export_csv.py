@@ -26,10 +26,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import donelog  # noqa: E402
 import due  # noqa: E402
 
-COLUMNS = ["Area", "Status", "Title", "Task", "Due", "Start", "Repeats", "Next", "Waiting on", "Owner", "Owes",
+COLUMNS = ["Area", "Status", "Title", "Task", "Due", "Start", "Repeats", "Next", "Waiting on", "Chase", "Owner", "Owes",
            "Added", "Closed", "Days", "Outcome", "Details in", "Where", "Id"]
 STATUS = {"overdue": "overdue", "today": "due today", "soon": "due soon", "later": "later", "undated": "undated",
-          "waiting": "waiting", "deferred": "not started", "unknown": "status unknown"}
+          "waiting": "waiting", "chase": "follow up", "deferred": "not started", "unknown": "status unknown"}
 
 
 def days_between(a: str | None, b: str | None) -> str:
@@ -55,7 +55,7 @@ def open_rows(root: Path, cfg: dict, today: date, area: str | None) -> list[list
             rows.append([
                 a.name, STATUS.get(due.bucket_of(t, buckets, today), "open"), t.title, t.text,
                 f.get("due", ""), f.get("start", ""), f.get("every", ""), f.get("next", ""), f.get("waiting", ""),
-                t.owner, f.get("yields", ""), f.get("added", ""), "",
+                f.get("chase", ""), t.owner, f.get("yields", ""), f.get("added", ""), "",
                 days_between(f.get("added"), today.isoformat()), "", f.get("ref", ""),
                 f"{a.path.parent.name}/tasks.md:{t.line}", t.id or "",
             ])
@@ -74,7 +74,7 @@ def done_rows(root: Path, cfg: dict, area: str | None, since: date | None) -> li
             continue
         rows.append([
             e.area, "dropped" if e.dropped else "done", due.short_title(e.text), e.text,
-            "", "", "", "", "", e.owner, "",
+            "", "", "", "", "", "", e.owner, "",
             e.added.isoformat() if e.added else "",
             ("≈ " if e.approx else "") + e.day.isoformat(),
             "" if e.took is None else str(e.took), e.outcome, "",

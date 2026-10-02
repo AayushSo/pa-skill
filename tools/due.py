@@ -14,7 +14,8 @@ Task line format (one task per line, fields separated by " | "):
     - [ ] Blocked thing | waiting:reply from a contact
 
 Fields: due, start (hidden until this date), every (daily | mon..sun | Nd | Nw), next
-(next occurrence of a recurring task), waiting (external blocker), ref (where detail lives),
+(next occurrence of a recurring task), waiting (external blocker), chase (on a waiting task: the day to follow up
+if nothing has come back — from then on it is listed under FOLLOW UP), ref (where detail lives),
 id (stable identifier used by the widget; assigned by --assign-ids, never edited by hand),
 at (HH:MM — a fixed time on the task's date, e.g. a call; shown in the widget's timeline),
 yields (what the task owes you when it is done — a conclusion, a decision, a number and what it implies;
@@ -25,7 +26,7 @@ title (a short name for the task — what the widget shows until the task is exp
 derived from the text).
 
 Usage:
-    python due.py                     briefing: overdue, next 7 days, unconfirmed, waiting
+    python due.py                     briefing: overdue, next 7 days, unconfirmed, follow up, waiting
     python due.py --days 14           widen the look-ahead window
     python due.py --area <name>       every open task in one area
     python due.py --json              machine-readable: every open task with its bucket
@@ -57,7 +58,8 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 
 SKILL_DIR = Path(__file__).resolve().parent.parent
-KNOWN_KEYS = {"due", "start", "every", "next", "waiting", "ref", "id", "at", "yields", "added", "owner", "title"}
+KNOWN_KEYS = {"due", "start", "every", "next", "waiting", "chase", "ref", "id", "at", "yields", "added", "owner", "title"}
+CHASE_DAYS = 14  # default follow-up interval for a waiting task, when pa.local.json sets no chase_days
 TITLE_MAX = 60
 OWNERS = {"me", "assistant"}
 WEEKDAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
@@ -66,9 +68,9 @@ EVERY_RE = re.compile(r"daily|mon|tue|wed|thu|fri|sat|sun|[1-9]\d*[dw]")
 ID_RE = re.compile(r"[a-z0-9]{3,12}")
 AT_RE = re.compile(r"([01]\d|2[0-3]):[0-5]\d")
 ID_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789"  # no 0/o/1/l/i
-FIELD_IN_TEXT_RE = re.compile(r"\b(due|start|next|every|waiting):\S")
+FIELD_IN_TEXT_RE = re.compile(r"\b(due|start|next|every|waiting|chase):\S")
 CONTEXT_RE = re.compile(r"^\s*-\s*(\d{4}-\d{2}-\d{2})\s*(?:→|->|–|—|to)\s*(\d{4}-\d{2}-\d{2})\s*\|\s*(.+?)\s*$")
-SPLIT_RE = re.compile(r"\s+\|\s+|\s*\|\s*(?=(?:due|start|every|next|waiting|ref|id|at|yields|added|owner|title)\s*:)", re.IGNORECASE)
+SPLIT_RE = re.compile(r"\s+\|\s+|\s*\|\s*(?=(?:due|start|every|next|waiting|chase|ref|id|at|yields|added|owner|title)\s*:)", re.IGNORECASE)
 
 
 @dataclass(eq=False)
@@ -87,6 +89,11 @@ class Task:
     @property
     def when(self) -> date | None:
         return self.date_field("due") or self.date_field("next")
+
+    @property
+    def chase(self) -> date | None:
+        """When to follow up on a waiting task if nothing has come back. Only meaningful with waiting:."""
+        return self.date_field("chase") if "waiting" in self.fields else None
 
     @property
     def id(self) -> str | None:
@@ -210,7 +217,7 @@ def parse_area(path: Path, content: str | None = None) -> Area:
         if "every" in task.fields and not EVERY_RE.fullmatch(task.fields["every"].lower()):
             warnings.append(f"{where} bad every '{task.fields['every']}' (use daily, mon..sun, Nd, Nw with N≥1)")
             task.fields.pop("every")
-        for key in ("due", "start", "next", "added"):
+        for key in ("due", "start", "next", "added", "chase"):
             try:
                 task.date_field(key)
             except ValueError:
@@ -221,6 +228,8 @@ def parse_area(path: Path, content: str | None = None) -> Area:
         every, nxt = task.fields.get("every", "").lower(), task.date_field("next")
         if every in WEEKDAYS and nxt and nxt.weekday() != WEEKDAYS.index(every):
             warnings.append(f"{where} next {nxt} is a {nxt.strftime('%a')}, but every:{every}")
+        if "chase" in task.fields and "waiting" not in task.fields:
+            warnings.append(f"{where} chase: without waiting: — a chase date only applies while waiting on someone")
         start, due = task.date_field("start"), task.date_field("due")
         if start and due and start > due:
             warnings.append(f"{where} start {start} is after due {due}")
@@ -259,13 +268,19 @@ def load_context(root: Path, cfg: dict, today: date) -> Context:
     return ctx
 
 
+def nudge_date(t: Task) -> str | None:
+    """The date a nudge count belongs to: the task's due/next date, else its chase date. Moving it resets the count."""
+    d = t.when or t.chase
+    return d.isoformat() if d else None
+
+
 def nudge_counts(root: Path, cfg: dict, areas: list[Area]) -> dict[str, int]:
     """Nudge counts from the widget store, only for tasks not re-dated since. Empty if nothing recorded."""
     from widget_store import Store  # same folder; imported lazily so due.py stays usable on its own
     store = Store(root, cfg.get("widget_dir", "_widget"))
     if not store.nudges_path.exists():
         return {}
-    when = {t.id: (t.when.isoformat() if t.when else None) for a in areas for t in a.tasks if t.id and t.mark != "x"}
+    when = {t.id: nudge_date(t) for a in areas for t in a.tasks if t.id and t.mark != "x"}
     return store.nudge_counts(when)
 
 
@@ -404,6 +419,7 @@ class Buckets:
     overdue: list[Task] = field(default_factory=list)
     soon: list[Task] = field(default_factory=list)       # today .. horizon
     unknown: list[Task] = field(default_factory=list)
+    chase: list[Task] = field(default_factory=list)      # waiting, and its chase date has come
     waiting: list[Task] = field(default_factory=list)
     undated: list[Task] = field(default_factory=list)
     later: list[Task] = field(default_factory=list)      # dated beyond horizon
@@ -434,13 +450,13 @@ def classify(areas: list[Area], today: date, horizon: date) -> Buckets:
             elif t.mark == "?":
                 b.unknown.append(t)
             elif "waiting" in t.fields:
-                b.waiting.append(t)
+                (b.chase if t.chase and t.chase <= today else b.waiting).append(t)
             elif not when:
                 b.undated.append(t)
             else:
                 b.later.append(t)
             if (start and today - timedelta(days=7) <= start <= today and (not when or when > horizon)
-                    and t not in b.unknown and t not in b.waiting):
+                    and t not in b.unknown and t not in b.waiting and t not in b.chase):
                 b.unlocked.append(t)
     return b
 
@@ -453,7 +469,7 @@ def assistant_due(t: Task, b: Buckets, today: date) -> bool:
 
 
 def bucket_of(t: Task, b: Buckets, today: date) -> str:
-    for name in ("overdue", "soon", "unknown", "waiting", "undated", "later", "deferred"):
+    for name in ("overdue", "soon", "unknown", "chase", "waiting", "undated", "later", "deferred"):
         if t in getattr(b, name):
             if name == "soon" and t.when == today:
                 return "today"
@@ -480,6 +496,11 @@ def fmt(task: Task, today: date, show_area: bool = True, nudged: int = 0) -> str
             extra.append(f"after done → next:{nxt.isoformat()}")
     if "waiting" in task.fields:
         extra.append(f"waiting: {task.fields['waiting']}")
+        chase = task.chase
+        if chase:
+            ago = (today - chase).days
+            extra.append(f"chase {chase.strftime('%a')} {chase.isoformat()}" + (
+                "" if ago < 0 else " — today" if ago == 0 else f" — {ago}d ago"))
     if "yields" in task.fields:
         owed = task.fields["yields"]
         extra.append("owes: " + (owed if len(owed) <= 60 else owed[:59] + "…"))
@@ -638,11 +659,13 @@ def main() -> int:
 
     by_date = lambda t: (t.when or date.max, t.area)
 
-    def section(title: str, items: list[Task]) -> None:
+    by_chase = lambda t: (t.chase or date.max, t.area)
+
+    def section(title: str, items: list[Task], key=by_date) -> None:
         items = mine(items)
         if items:
             print(f"\n{title} ({len(items)})")
-            for t in sorted(items, key=by_date):
+            for t in sorted(items, key=key):
                 print(fmt(t, today, nudged=nudges.get(t.id or "", 0)))
 
     if b.assistant:
@@ -663,11 +686,22 @@ def main() -> int:
     section(f"DUE IN NEXT {args.days} DAYS", b.soon)
     section("STATUS UNKNOWN — confirm with user", b.unknown)
     section("NEWLY ACTIVE (start date passed this week)", b.unlocked)
-    section("WAITING ON SOMEONE", b.waiting)
+    section("FOLLOW UP — still waiting at the chase date: chase them, keep waiting (new chase:) or close",
+            b.chase, by_chase)
+    section("WAITING ON SOMEONE", b.waiting, by_chase)
 
     print()
     if undated:
         print("Open, undated: " + " · ".join(f"{k} {v}" for k, v in sorted(undated.items())))
+    unchased: dict[str, int] = {}
+    for t in mine(b.waiting):
+        if not t.chase and not WAIT_TASK_RE.fullmatch(t.fields["waiting"].strip()):  # chains unblock on their own
+            unchased[t.area] = unchased.get(t.area, 0) + 1
+    if unchased:
+        chase_days = int(cfg.get("chase_days", CHASE_DAYS))
+        print(f"Waiting with no chase date: {sum(unchased.values())} ("
+              + " · ".join(f"{k} {v}" for k, v in sorted(unchased.items()))
+              + f") — give each a chase: (default +{chase_days}d → {(today + timedelta(days=chase_days)).isoformat()})")
     print(f"Dated beyond {args.days} days: {len(mine(b.later))} · Not yet started (future start:): {len(mine(b.deferred))}")
     stale = [a for a in areas if is_stale(a, today, stale_after, exempt)]
     for a in stale:

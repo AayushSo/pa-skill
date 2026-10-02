@@ -83,14 +83,14 @@ python "$HOME/.claude/skills/pa/tools/due.py" --area <name>   # one area, every 
    **If a schedule is configured** (section 9): `schedulectl.py show` for today's blocks, then place each focus task
    in the block it fits with `widgetctl.py plan <id> <block>` — respect what a block is for (its title, note and
    the local rules say what belongs there) — and mention any `schedulectl.py check` clash in the briefing.
-   **Record nudges:** `widgetctl.py nudge <id> ...` for every overdue or due-today task the briefing raised (section 10).
+   **Record nudges:** `widgetctl.py nudge <id> ...` for every overdue, due-today or FOLLOW UP task the briefing raised (section 10).
 
 Then, depending on the args:
 
 - **No args → briefing.** From the script output, give a short briefing (at most ~15 lines): overdue first,
-  then the next 7 days grouped by day, then one line on waiting items. For `[?]` items and stale areas, ask
-  the user to confirm status — **batch them into a single AskUserQuestion call or one compact list**, never one
-  question per turn. Offer the one or two things worth doing today, using the weekly schedule named in the local
+  then the next 7 days grouped by day, then the FOLLOW UP items, then one line on waiting items. For `[?]` items,
+  FOLLOW UP items and stale areas, ask the user — **batch them into a single AskUserQuestion call or one compact
+  list**, never one question per turn. Offer the one or two things worth doing today, using the weekly schedule named in the local
   rules if there is one. Surface every `!` warning line from the script — they mean a task may be mis-parsed.
   **End with "What this changes"** (≤3 lines) whenever something was logged, answered or finished since the last run:
   the conclusion, and what you did about it. Skip the heading only when nothing new came in.
@@ -110,11 +110,11 @@ detailed docs named in `about.md`. **Never bulk-load detailed READMEs.**
 - [?] Status unknown — ask the user | ref:contacts.md
 - [ ] Hidden until its start date | start:2026-10-05 | due:2026-10-09
 - [ ] Recurring task | every:mon | next:2026-09-14
-- [ ] Blocked on someone else | waiting:reply from a contact
+- [ ] Blocked on someone else | waiting:reply from a contact | chase:2026-09-28
 ```
 
 - Marks: `[ ]` open · `[?]` status unknown · `[x]` never left in tasks.md (move to done.md).
-- Fields after ` | `: `due` · `start` · `every` (`daily`, `mon`…`sun`, `Nd`, `Nw`, N ≥ 1) · `next` · `waiting` · `ref` · `at` · `yields` · `added` · `owner` · `title` · `id`.
+- Fields after ` | `: `due` · `start` · `every` (`daily`, `mon`…`sun`, `Nd`, `Nw`, N ≥ 1) · `next` · `waiting` · `chase` · `ref` · `at` · `yields` · `added` · `owner` · `title` · `id`.
 - **`title:` — the short name the widget shows** until a task is expanded (the briefing shows it too). At most
   ~50 characters, verb first, and distinct from its neighbours ("Book the DMV retest", not "Driving practice"); no
   dates, no status. Without one a short form is derived from the text, so it is never blank — but derived titles
@@ -131,6 +131,15 @@ detailed docs named in `about.md`. **Never bulk-load detailed READMEs.**
 - **Chains.** When task B cannot start until task A is done: if B already exists, give it `waiting:task <A's id>`
   (the scanner warns once A is closed, so B gets dated); if B does not exist yet, name it in A's `yields:` as
   "then …", and create it when A closes (section 3, step 2).
+- **`chase:YYYY-MM-DD` — when to stop waiting and act.** **Every new `waiting:` task gets one** (put it right after
+  `waiting:`): the day to follow up if nothing has come back. Pick the interval from the follow-up rules in the local
+  rules or the area's about.md (an application, an email to a busy person and a form at an office wait differently);
+  with nothing to go on, use `chase_days` from pa.local.json (default 14). Until that day the task sits under
+  WAITING with its chase date; from that day it is listed under **FOLLOW UP**, and you ask the user which it is:
+  **chase** (add the follow-up as a task of its own, or record that they sent it, then set a new `chase:`),
+  **keep waiting** (a new `chase:`), or **close** (done.md: `no reply — closed`). `waiting:task <id>` chains need
+  no chase date — the scanner says when the task they wait on closes. The scanner counts waiting tasks with no
+  chase date; give each one a date when you next touch it.
 - `at:HH:MM` (24-hour) pins a task to a time on its date — calls, appointments. The widget timeline shows it at that time.
 - **`yields:` — what the task owes when it is done.** **CRITICAL: whenever you write a task whose point is the
   information rather than the doing, give it a `yields:`** naming the conclusion it must produce — analysis, logging
@@ -170,7 +179,7 @@ When the user reports something:
    never invent a conclusion, and never close it silently. `widgetctl.py ack` refuses such a task without `--outcome`.
 2. **It spawns follow-ups** → add them with real dates, using the follow-up rules in the local rules or the
    area's about.md (e.g. an email sent → a follow-up task; an offer lands → a decision-window task).
-3. **A `waiting:` item resolves** → remove `waiting:`, then add a `due:` date or finish the task.
+3. **A `waiting:` item resolves** → remove `waiting:` and `chase:`, then add a `due:` date or finish the task.
 4. **The fact belongs in a detailed doc** → update it there too (the local rules say where each area keeps
    them). **Detailed docs are canonical.** tasks.md must never contradict them.
 5. **Read back your interpretation** before applying anything that closes a task, drops one, or changes a
@@ -193,6 +202,8 @@ propose dropping it and record `dropped — reason` in done.md.
   area's done.md if there is no better home), derive any follow-ups (step 2), and read back your interpretation
   before anything that closes, drops or changes a decision (step 5). The comment stays visible on the task.
 - **snooze until D** → do what `widgetctl.py inbox` prints next to the event:
+  - a waiting task with no `due:`/`next:` → set `chase:D` (never `start:` — that would hide the wait and bring it
+    back without a prompt); the widget labels this "Chase on";
   - task has no date, or its `due:`/`next:` is on or after D → set `start:D`;
   - the widget recorded `moves_date` (the user confirmed moving the date when snoozing) → set `start:D` **and**
     `due:D` (or `next:D` for a recurring task; for `every:<weekday>` tell the user if D is a different weekday);
@@ -364,8 +375,8 @@ prints them under `IMPORTANT`. One line each, always with an end date:
 
 **Nudges** — how many days the briefing has raised a task that still isn't done:
 
-- After each briefing, `widgetctl.py nudge <id> ...` for the overdue and due-today tasks you raised (once per day
-  per task; re-dating a task resets its count).
+- After each briefing, `widgetctl.py nudge <id> ...` for the overdue, due-today and FOLLOW UP tasks you raised (once
+  per day per task; re-dating a task — or moving a wait's `chase:` — resets its count).
 - The scanner shows `nudged N×`. **At 2× or more, do not repeat the reminder**: ask once whether to re-date, drop or
   keep it, and apply the answer. That is how the "don't nag" rule survives between sessions.
 

@@ -35,7 +35,10 @@ def snooze_instruction(task, event: dict) -> str:
     until = event.get("until")
     if task is None:
         return "task gone — tell the user, then ack"
-    field = "due" if task.fields.get("due") else ("next" if task.fields.get("next") else None)
+    if "waiting" in task.fields and not task.when:
+        # "Don't remind me until D" on a wait is a new chase date; start: would hide it and bring it back silently.
+        return f"waiting task: set chase:{until} (not start:)"
+    field ="due" if task.fields.get("due") else ("next" if task.fields.get("next") else None)
     current = task.fields.get(field) if field else None
     if not current or current >= until:
         return f"set start:{until}"
@@ -132,8 +135,7 @@ def main() -> int:
         today_iso = due.date.today().isoformat()
         for i in args.ids:
             if i in tasks:
-                w = tasks[i].when
-                n = store.record_nudge(i, w.isoformat() if w else None, today_iso)
+                n = store.record_nudge(i, due.nudge_date(tasks[i]), today_iso)
                 hint = "  ← ask to re-date, drop or keep; don't just repeat it" if n >= 2 else ""
                 print(f"{i}: nudged {n}×{hint}")
         return 0

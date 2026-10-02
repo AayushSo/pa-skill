@@ -447,9 +447,11 @@ function taskRow(t, { showArea = true, showStart = false, showOwner = true } = {
   if (showArea) chips.push($("span", { class: "chip", text: t.area }));
   if (t.unknown) chips.push($("span", { class: "chip pend", text: "status?" }));
   if (t.fields.waiting) chips.push($("span", { class: "chip", text: `waiting: ${t.fields.waiting}` }));
+  if (t.fields.waiting && t.fields.chase) chips.push($("span", { class: `chip${t.bucket === "chase" ? " over" : ""}`,
+    title: "If nothing has come back by then, follow up, keep waiting or close it", text: `chase ${fmtDay(t.fields.chase, { day: "numeric", month: "short" })}` }));
   if (t.fields.every) chips.push($("span", { class: "chip", text: `↻ ${t.fields.every}` }));
   if (showStart && t.bucket === "deferred" && t.fields.start) chips.push($("span", { class: "chip", text: `starts ${fmtDay(t.fields.start, { day: "numeric", month: "short" })}` }));
-  if (t.pending_snooze) chips.push($("span", { class: "chip pend", text: `snoozed → ${fmtDay(t.pending_snooze)}` }));
+  if (t.pending_snooze) chips.push($("span", { class: "chip pend", text: `${isWait(t) ? "chase" : "snoozed"} → ${fmtDay(t.pending_snooze)}` }));
   if (t.pending_done) chips.push($("span", { class: "chip pend", text: t.fields.yields ? `done · ${who} owes the outcome` : `done · waiting for ${who}` }));
   if (t.comments.length) chips.push($("span", { class: "chip", text: `💬 ${t.comments.length}` }));
   if (t.nudged && !helpers) chips.push($("span", { class: `chip${t.nudged >= 2 ? " over" : ""}`, title: `Days ${who} has raised this without it getting done (resets when re-dated)`,
@@ -480,6 +482,7 @@ function panel(t) {
   add("After done", t.suggested_next && `next ${fmtDay(t.suggested_next)}`);
   add("Owes", t.fields.yields);
   add("Waiting on", t.fields.waiting);
+  add("Chase", t.fields.waiting && t.fields.chase && fmtDay(t.fields.chase, { weekday: "short", day: "numeric", month: "short" }));
   add("Details in", t.fields.ref && $("span", {}, $("code", { text: t.fields.ref }), ` (${t.folder}/)`));
   add("Where", `${t.folder}/tasks.md, line ${t.line}`);
 
@@ -512,12 +515,15 @@ function panel(t) {
     $("div", { class: "actions" },
       t.pending_snooze
         ? $("button", { onclick: () => send({ type: "unsnooze", task_id: t.id }) }, "Cancel snooze")
-        : [$("span", { class: "label", text: "Snooze:" }),
+        : [$("span", { class: "label", text: isWait(t) ? "Chase on:" : "Snooze:", title: isWait(t) ? "Keep waiting until then; follow up if nothing has come back" : "" }),
            $("button", { disabled: !t.id, onclick: () => snooze(t, addDays(today, 1)) }, "Tomorrow"),
            $("button", { disabled: !t.id, onclick: () => snooze(t, nextMon) }, "Next Mon"),
            dateIn,
-           $("button", { disabled: !t.id, onclick: () => snooze(t, dateIn.value) }, "Snooze")]));
+           $("button", { disabled: !t.id, onclick: () => snooze(t, dateIn.value) }, isWait(t) ? "Set" : "Snooze")]));
 }
+
+// A wait with no date of its own: snoozing it sets its chase date (/pa writes chase:, not start:).
+function isWait(t) { return !!t.fields.waiting && !t.when; }
 
 function snooze(t, until) {
   if (!until) return;
@@ -901,7 +907,9 @@ function renderToday(d) {
   const week = pick(t => t.bucket === "soon");
   const unknown = pick(t => t.bucket === "unknown");
   const fresh = pick(t => t.newly_active && ["undated", "later"].includes(t.bucket));
-  const waiting = pick(t => t.bucket === "waiting");
+  const byChase = (a, b) => (a.fields.chase || "9999").localeCompare(b.fields.chase || "9999");
+  const chase = pick(t => t.bucket === "chase").sort(byChase);
+  const waiting = pick(t => t.bucket === "waiting").sort(byChase);
   const nothing = !focus.length && !overdue.length && !today.length && !week.length;
   const count = b => d.tasks.filter(t => t.bucket === b && !isHelpers(t)).length;
   const today0 = d.schedule && d.schedule.days.length ? d.schedule.days[0] : null;
@@ -913,7 +921,7 @@ function renderToday(d) {
       today0.all_day.length ? $("div", { class: "dayextra" }, today0.all_day.map(e => $("span", { class: "chip over", text: e.title }))) : null,
       timelineRows(d, today0, { isToday: true })));
   };
-  const candidates = d.tasks.filter(t => !inFocus.has(t.key) && !isHelpers(t) && ["overdue", "today", "soon", "unknown", "waiting"].includes(t.bucket));
+  const candidates = d.tasks.filter(t => !inFocus.has(t.key) && !isHelpers(t) && ["overdue", "today", "soon", "unknown", "chase", "waiting"].includes(t.bucket));
   const o = { showArea: !soloArea };
   return [
     assistantSection(d),
@@ -927,6 +935,7 @@ function renderToday(d) {
     sectionEl("week", `Next ${d.horizon_days} days`, week, { grouped: true, opts: o }),
     sectionEl("unknown", "Status unknown", unknown, { opts: o }),
     sectionEl("fresh", "Newly active", fresh, { opts: o }),
+    sectionEl("chase", "Follow up — no answer by the chase date", chase, { opts: o }),
     sectionEl("waiting", "Waiting on someone", waiting, { folded: true, opts: o }),
     nothing ? $("p", { class: "empty-state", text: "Nothing due in the next week. 🎉" }) : null,
     $("p", { class: "foot" },
