@@ -319,6 +319,8 @@ def make_handler(root: Path, cfg: dict, store: Store, port_ref: list[int]):
 
         def log_message(self, fmt, *a):
             """Small request log for troubleshooting (never logs the key; capped at ~200 KB)."""
+            if "/api/presence" in (fmt % a) and " 200 " in (fmt % a):
+                return   # pages check in every 30 s; logging that would bury everything else
             try:
                 store.ensure()
                 if log_path.exists() and log_path.stat().st_size > 200_000:
@@ -462,7 +464,7 @@ def make_handler(root: Path, cfg: dict, store: Store, port_ref: list[int]):
             if not self._host_ok():
                 return self._send(403, b"bad host", "text/plain")
             path = self.path.split("?", 1)[0]
-            if path not in ("/api/event", "/api/open") and not self._is_area_api(path):
+            if path not in ("/api/event", "/api/open", "/api/presence") and not self._is_area_api(path):
                 return self._send(404, b"not found", "text/plain")
             if not self._authorized():
                 return self._json(403, {"error": "missing or wrong key"})
@@ -474,6 +476,14 @@ def make_handler(root: Path, cfg: dict, store: Store, port_ref: list[int]):
                 return self._json(400, {"error": "bad json"})
             if self._is_area_api(path):
                 return self._area_api("POST", path, body)
+            if path == "/api/presence":    # an open widget page checking in (or leaving)
+                try:
+                    if body.get("gone"):
+                        store.page_gone(str(body.get("page", "")))
+                        return self._json(200, {"ok": True})
+                    return self._json(200, store.page_seen(str(body.get("page", ""))))
+                except ValueError as exc:
+                    return self._json(400, {"error": str(exc)})
             if self.path == "/api/open":
                 # An installed Edge app keeps target=_blank links in Edge; route outside links to the chosen browser.
                 how = cfg.get("link_browser", "default")

@@ -69,6 +69,10 @@ python tools/open_widget.py            # start the server (127.0.0.1, access-key
 python tools/open_widget.py --status   # or --restart / --stop
 ```
 
+Only one window: open widget pages check in with the server, so `open_widget.py` (and the login task) won't open a
+second window while one is open (`--new-window` overrides), and a window opened by hand on top of another says so
+and offers to close itself.
+
 A theme switch (Auto / Light / Dark) and a `?` shortcut panel sit in the top bar; the running notes fold into one
 line. The page is titled and branded with `assistant_name` (an ibis mark, drawn inline and in the app icon), coloured by
 `accent` / `accent_dark`. Window mode is `widget_browser` in `pa.local.json`: `default`, `firefox`, `shortcut` (run `widget_shortcut`),

@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Start the /pa widget server if needed, then open the widget window.
 
-    python open_widget.py              ensure server + open window (what the login task runs)
+    python open_widget.py              ensure server + open window (what the login task runs) — unless a widget
+                                       window is already open (pages check in with the server; see widget_store)
+    python open_widget.py --new-window open one anyway
     python open_widget.py --no-browser ensure server only
     python open_widget.py --restart    stop the running server first (after updating the code)
     python open_widget.py --stop       stop the server
@@ -116,6 +118,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--root"); ap.add_argument("--config")
     ap.add_argument("--no-browser", action="store_true")
+    ap.add_argument("--new-window", action="store_true", help="open a window even if one is already open")
     ap.add_argument("--restart", action="store_true")
     ap.add_argument("--stop", action="store_true")
     ap.add_argument("--status", action="store_true")
@@ -158,7 +161,12 @@ def main() -> int:
             return 1
         print(f"server started on port {port}")
     if not args.no_browser:
-        print(open_window(cfg.get("widget_browser", "default"), url, cfg))
+        live = store.open_pages()
+        if live and not args.new_window:
+            print(f"already open in {len(live)} window{'s' if len(live) > 1 else ''} — not opening another "
+                  "(--new-window to open one anyway)")
+        else:
+            print(open_window(cfg.get("widget_browser", "default"), url, cfg))
     return 0
 
 

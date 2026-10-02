@@ -303,6 +303,9 @@ python "$T/open_widget.py" --stop && schtasks //run //tn "PA Widget"   # restart
 
 - **Restart the server through the logon task, never with `--restart` from your own shell.** A server started from the
   agent's sandboxed shell serves pages fine but cannot launch a browser, so outside links silently do nothing.
+  Restarting does not open a second window: open widget pages check in with the server every 30 s, and
+  `open_widget.py` skips opening one while a page is open (`--new-window` forces it). A window opened by hand while
+  another is open offers to close itself.
 
 - Files: `tools/pa_widget.py` (server, 127.0.0.1 only, access-key protected), `tools/widget.html`,
   `tools/open_widget.py` (start server + open window per `widget_browser` in pa.local.json), `tools/widget_store.py`.

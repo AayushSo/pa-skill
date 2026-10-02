@@ -13,7 +13,7 @@ The data folder is deliberately outside git, so this is its only history. Snapsh
     python snapshot.py restore FILE PATH writes PATH.restored next to the current file; never overwrites anything
 
 What goes in: text files (.md .json .jsonl .txt .csv .html .py .yaml .yml .toml) under the data root and every listed area,
-up to 5 MB each. Left out: dot-files (credentials and tool state), the widget's access key and log, binary files,
+up to 5 MB each. Left out: dot-files (credentials and tool state), the widget's access key, log and open-page list, binary files,
 the snapshot and export folders, and anything matching "snapshot_exclude" (glob patterns) in pa.local.json.
 
 What `check` reports, comparing a snapshot with now:
@@ -69,7 +69,7 @@ def sources(root: Path, cfg: dict) -> list[tuple[Path, str]]:
                 continue
             if any(part.startswith(".") for part in rel.parts) or skip_dirs & set(rel.parts):
                 continue
-            if not prefix and rel.parts[0] == widget and p.name in ("key", "server.log", "server.log.1", "server.pid"):
+            if not prefix and rel.parts[0] == widget and p.name in ("key", "server.log", "server.log.1", "server.pid", "pages.json"):
                 continue
             if any(fnmatch.fnmatch(name, pat) for pat in patterns):
                 continue

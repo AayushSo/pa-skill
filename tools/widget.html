@@ -341,6 +341,7 @@ function setFold(id, value) {
 }
 
 const state = { data: null, tab: "today", expanded: new Set(), drafts: {}, search: "", error: null, filterOpen: false,
+                older: 0, keepBoth: false, closeBlocked: false,
                 week: { start: null, data: null, loading: false } };
 
 // Area filter: the set of HIDDEN area folders, so a newly added area shows up by default.
@@ -431,6 +432,39 @@ function cycleTheme() {
   theme = THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length];
   try { localStorage.setItem(THEME_STORE, theme); } catch (_) {}
   applyTheme();
+}
+
+// ---------- presence: is this widget already open in another window? ----------
+// Each page load gets its own id and checks in every 30 s; the server keeps the list (pages.json), so
+// open_widget.py can skip opening a duplicate and a newer window can offer to close itself.
+const PAGE_ID = (crypto.randomUUID ? crypto.randomUUID() : `p-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+async function checkIn() {
+  try {
+    const r = await fetch("/api/presence", { method: "POST", headers: { "X-PA-Key": key, "Content-Type": "application/json" },
+                                             body: JSON.stringify({ page: PAGE_ID }) });
+    if (!r.ok) return;
+    const older = (await r.json()).older || 0;
+    if (older !== state.older) { state.older = older; renderNotices(state.data); }
+  } catch (_) {}
+}
+function leave() {
+  try {
+    fetch("/api/presence", { method: "POST", keepalive: true, headers: { "X-PA-Key": key, "Content-Type": "application/json" },
+                             body: JSON.stringify({ page: PAGE_ID, gone: true }) });
+  } catch (_) {}
+}
+function closeThis() {
+  window.close();
+  setTimeout(() => { state.closeBlocked = true; renderNotices(state.data); }, 400);   // still here: the browser said no
+}
+function dupeNotice() {
+  if (!state.older || state.keepBoth) return null;
+  return $("div", { class: "notice warn" },
+    $("span", { text: state.closeBlocked ? "This browser won't let the page close itself — close this window yourself."
+                                         : "This widget is already open in another window. " }),
+    state.closeBlocked ? null : $("button", { class: "linklike", onclick: closeThis }, "Close this window"),
+    state.closeBlocked ? null : " · ",
+    $("button", { class: "linklike", onclick: () => { state.keepBoth = true; renderNotices(state.data); } }, "Keep both"));
 }
 
 // ---------- quick add ----------
@@ -1035,6 +1069,8 @@ function renderAll(d) {
 function renderNotices(d) {
   const box = document.getElementById("notices");
   box.replaceChildren();
+  const dupe = dupeNotice();
+  if (dupe) box.append(dupe);
   if (state.error) { box.append($("div", { class: "notice warn", text: state.error })); return; }
   if (!d) return;
   const pending = d.tasks.reduce((n, t) => n + (t.pending_done ? 1 : 0) + (t.pending_snooze ? 1 : 0) + t.comments.filter(c => !c.filed).length, 0)
@@ -1115,6 +1151,10 @@ nb.addEventListener("click", goToSchedule);
 nb.addEventListener("keydown", ev => { if (ev.key === "Enter") goToSchedule(); });
 // Refresh when the window comes back into view, and every 2 minutes — but never while typing.
 const typing = () => ["TEXTAREA", "INPUT"].includes(document.activeElement?.tagName);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) checkIn(); });
+window.addEventListener("pagehide", leave);
+window.addEventListener("pageshow", ev => { if (ev.persisted) checkIn(); });   // back from the browser's page cache
+setInterval(checkIn, 30000);
 document.addEventListener("visibilitychange", () => { if (!document.hidden && !typing()) { load(); if (state.tab === "week" && state.week.start) loadWeek(state.week.start); } });
 document.addEventListener("keydown", ev => {
   if (ev.key === "Escape") { toggleHelp(false); closeAdd(); if (state.filterOpen) { state.filterOpen = false; render(); } return; }
@@ -1157,6 +1197,7 @@ for (const part of location.hash.slice(1).split("&")) {
   if (k === "week" && /^\d{4}-\d{2}-\d{2}$/.test(v || "")) { state.tab = "week"; state.week.start = mondayOf(v); }
 }
 load();
+checkIn();
 </script>
 </body>
 </html>

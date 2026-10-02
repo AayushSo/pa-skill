@@ -8,20 +8,26 @@ never in the skill repo.
     processed.txt    event ids /pa has handled (append-only; the inbox itself is never rewritten)
     details.json     {"updated": ts, "focus": [task ids], "details": {task id: {"text", "updated"}}, "plan": {...}}
     nudges.json      {task id: {"when": the task's date when nudged, "dates": [days /pa raised it]}}
+    pages.json       {page id: {"first", "last"}} — widget pages open right now (each checks in every 30 s), so
+                     open_widget.py and the page itself can tell when a second window would be a duplicate
     key              random access key the widget page must send with every API call
 """
 from __future__ import annotations
 
 import json
 import os
+import re
 import secrets
 import threading
+import time
 from datetime import date, datetime
 from pathlib import Path
 
 EVENT_TYPES = {"done", "undone", "comment", "snooze", "unsnooze", "capture", "uncapture"}
 CAPTURE_MAX = 500  # characters; a quick add is a sentence, the assistant writes the task properly
 _lock = threading.Lock()
+PAGE_ALIVE_SECONDS = 150   # pages check in every 30 s; browsers slow timers in hidden windows to about once a minute
+PAGE_ID_RE = re.compile(r"[A-Za-z0-9-]{8,64}")
 
 
 class Store:
@@ -32,6 +38,7 @@ class Store:
         self.details_path = self.dir / "details.json"
         self.nudges_path = self.dir / "nudges.json"
         self.key_path = self.dir / "key"
+        self.pages_path = self.dir / "pages.json"
 
     def ensure(self) -> None:
         self.dir.mkdir(parents=True, exist_ok=True)
@@ -129,6 +136,41 @@ class Store:
         gone = self.processed_ids() | {e.get("ref") for e in events if e["type"] == "uncapture"}
         return [{k: e[k] for k in ("eid", "ts", "text", "area", "due") if k in e}
                 for e in events if e["type"] == "capture" and e["eid"] not in gone]
+
+    # ---- open widget pages: so a second window is not opened by accident ---------------------------
+    def _pages(self) -> dict:
+        try:
+            return json.loads(self.pages_path.read_text(encoding="utf-8")) if self.pages_path.exists() else {}
+        except (OSError, json.JSONDecodeError):
+            return {}
+
+    def page_seen(self, page_id: str, now: float | None = None) -> dict:
+        """A widget page checked in. Returns how many open pages were opened before it, and how many are open."""
+        if not PAGE_ID_RE.fullmatch(page_id or ""):
+            raise ValueError("bad page id")
+        now = time.time() if now is None else now
+        self.ensure()
+        with _lock:
+            pages = {k: v for k, v in self._pages().items() if now - v.get("last", 0) <= PAGE_ALIVE_SECONDS}
+            entry = pages.get(page_id) or {"first": now}
+            entry["last"] = now
+            pages[page_id] = entry
+            self._write_json(self.pages_path, pages)
+        me = (entry["first"], page_id)
+        return {"older": sum(1 for k, v in pages.items() if (v["first"], k) < me), "open": len(pages)}
+
+    def page_gone(self, page_id: str) -> None:
+        """A page was closed or reloaded: stop counting it at once."""
+        with _lock:
+            pages = self._pages()
+            if pages.pop(page_id, None) is not None:
+                self._write_json(self.pages_path, pages)
+
+    def open_pages(self, now: float | None = None) -> list[str]:
+        """Ids of the widget pages open right now, oldest first."""
+        now = time.time() if now is None else now
+        live = [(v.get("first", 0), k) for k, v in self._pages().items() if now - v.get("last", 0) <= PAGE_ALIVE_SECONDS]
+        return [k for _, k in sorted(live)]
 
     # ---- focus + details ----------------------------------------------------------------------
     def details(self) -> dict:
