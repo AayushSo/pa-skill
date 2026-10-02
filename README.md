@@ -33,11 +33,15 @@ to find areas and what an area may add.
 ## Setup
 
 1. Clone into `~/.claude/skills/pa`.
-2. `cp config.example.json config.json` and set `data_root`.
-3. Copy `pa.local.example.json` to `<data_root>/pa.local.json`, list your areas and adjust the settings.
-4. Create `<data_root>/<local_rules>` and each area's folder with at least a `tasks.md` (format: `SKILL.md` §2).
-   To see what an area can add, copy `examples/area-template` in as an area.
-5. `python tools/due.py` should print a briefing. Then run `/pa` in Claude Code.
+2. In Claude Code, run `/pa setup`. It asks where to keep your data (outside this folder), your areas, what to
+   call the assistant, the widget, and how long to wait before chasing people; then `tools/setup.py` creates the
+   files and the assistant fills them in from your answers. It never overwrites an existing file, so it is also safe
+   to re-run to fill gaps. `python tools/setup.py check` reports what a setup is missing.
+
+By hand instead: copy `config.example.json` to `config.json` and set `data_root`; copy `pa.local.example.json` to
+`<data_root>/pa.local.json` and list your areas; create `<data_root>/<local_rules>` and each area's folder with a
+`tasks.md`, `done.md` and `about.md` (format: `SKILL.md` §2; `examples/area-template` has the headers). Then
+`python tools/due.py` should print a briefing.
 
 ## Areas
 

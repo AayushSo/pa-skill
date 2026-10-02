@@ -39,6 +39,7 @@ import areas as AR  # noqa: E402
 import donelog  # noqa: E402
 import due  # noqa: E402
 import schedule as sch  # noqa: E402
+import setup as pa_setup  # noqa: E402
 from widget_store import EVENT_TYPES, Store  # noqa: E402
 
 HTML = Path(__file__).resolve().parent / "widget.html"
@@ -165,6 +166,8 @@ def build_data(root: Path, cfg: dict, store: Store, today: date | None = None,
         t["detail"] = d["text"] if d else None
         t["detail_updated"] = d["updated"] if d else None
     data["captures"] = store.captures()
+    # Pieces a working setup still lacks (an area without done.md, a missing rules file) — not the file warnings above.
+    data["setup_problems"] = [x for x in pa_setup.check_data(root, cfg)[1] if x not in data["warnings"]]
     open_ids = {t["id"] for t in data["tasks"] if t["id"]}
     mine = {t["id"] for t in data["tasks"] if t["id"] and t["owner"] != "assistant"}
     data["focus"] = [i for i in det.get("focus", []) if i in mine]

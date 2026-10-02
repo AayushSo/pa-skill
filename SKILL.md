@@ -1,6 +1,6 @@
 ---
 name: pa
-description: Personal assistant across the user's life areas, each tracked as one-line tasks in <area>/tasks.md (areas listed in <data_root>/pa.local.json; data root set in the skill's local config.json). Use when the user invokes /pa, asks what is due / overdue / next, wants a briefing or weekly review, reports that something is done or has changed (an email sent, a reply received, a deadline moved), or wants to add, defer or drop a task. Args - none (briefing), an area name, "review" (weekly review), or free text describing an update.
+description: Personal assistant across the user's life areas, each tracked as one-line tasks in <area>/tasks.md (areas listed in <data_root>/pa.local.json; data root set in the skill's local config.json). Use when the user invokes /pa, asks what is due / overdue / next, wants a briefing or weekly review, reports that something is done or has changed (an email sent, a reply received, a deadline moved), or wants to add, defer or drop a task. Args - none (briefing), an area name, "review" (weekly review), "setup" (first-run setup interview), or free text describing an update.
 ---
 
 # /pa — personal assistant
@@ -49,7 +49,7 @@ record every change they report — and do the tasks that are yours (`owner:assi
 ## 1. On load — always start here
 
 1. Read `~/.claude/skills/pa/config.json` for `data_root`, then `<data_root>/pa.local.json`. If config.json is
-   missing, tell the user to copy `config.example.json` and set `data_root` — do not guess a path. If
+   missing, this is a first run: offer setup (section 14) — do not guess a path. If
    pa.local.json is missing, the tools treat every folder with a tasks.md as an area and use defaults
    (`pa.local.example.json` shows every setting).
 2. Read `<data_root>/<local_rules>` (`local_rules` in pa.local.json). Its rules extend and override the generic
@@ -97,6 +97,7 @@ Then, depending on the args:
 - **An area name →** run `--area`, read that area's `about.md` — and its instructions file if `area.json` names
   one (`areas.py show <folder>`) — then discuss.
 - **`review` →** the weekly review (section 5).
+- **`setup` →** first-run setup, or fill the gaps in an existing one (section 14).
 - **Free-text update →** apply it (section 3), then show the resulting briefing lines for that area.
 
 **Reading budget.** Go down this ladder only as far as the task needs: script output → `about.md` →
@@ -462,3 +463,35 @@ python "$T/areas.py" hooks on_load      # the commands to run (also: hooks revie
 - An area's code carries its own tests (e.g. `<area>/<code dir>/tests`); run them after changing it.
 - What an area's instructions file says about its own data (who edits what, what to leave alone) binds you like
   the local rules do.
+
+## 14. First-run setup (`/pa setup`)
+
+Run it when config.json is missing (offer it — the user may not know it exists), or when the user asks. On an
+existing setup, start with `setup.py check` and only fill what it reports missing: **setup never overwrites a file**.
+The interview is yours; the files are written by `tools/setup.py`, never by hand.
+
+```bash
+python "$T/setup.py" check                       # ok / !! problems / -- suggestions; exit 1 when something is missing
+python "$T/setup.py" init --data-root DIR --area FOLDER=purpose [--area ...] \
+       --assistant-name NAME --chase-days N --widget-browser default|firefox|edge-app|none [--dry-run]
+```
+
+1. **Interview, in at most two batched rounds** (one AskUserQuestion call each, with free text allowed):
+   - where the data should live (suggest `~/pa-data`; **it must be outside the skill folder** — setup refuses
+     otherwise, so no user data can reach git);
+   - the areas: a folder name and one line on what each is for (suggest a few from what they say about their
+     life — work, study, health, admin — but take their words);
+   - what to call the assistant (`assistant_name`);
+   - whether they want the widget, and in which browser; whether to set up a weekly schedule now or later;
+   - how long to wait before chasing someone (default 14 days), and any kinds that differ (an application, an
+     email to a busy person).
+2. Read the plan back in one short list, then run `init --dry-run`, then `init`.
+3. **Fill what init leaves as headings**, from their answers only — never invent facts: each area's about.md (scope,
+   key facts, the definition of done), and the local rules file (`pa-local.md`: follow-up intervals, people,
+   busy periods, sensitive data, tone). Leave a heading's placeholder in place when they said nothing about it.
+4. Ask for each area's first two or three tasks and write them (section 2: title, `added:`, dates, then
+   `due.py --assign-ids`).
+5. If they want the widget: `open_widget.py` starts it. To start it at login on Windows, give them the command for
+   a logon scheduled task that runs `pythonw.exe <skill>/tools/open_widget.py` — they run it; you don't create one.
+   A schedule, if wanted now: section 9.
+6. Finish with `setup.py check` and the first briefing (section 1).

@@ -1053,6 +1053,9 @@ function renderNotices(d) {
                              long: `${helperName()} hasn't run today — focus and details may be from an earlier day.` });
   if (pending) notes.push({ short: `${pending} change${pending === 1 ? "" : "s"} waiting`,
                             long: `${pending} change${pending === 1 ? "" : "s"} waiting for ${helperName()}'s next run.` });
+  const setupGaps = d.setup_problems || [];
+  if (setupGaps.length) notes.push({ short: "setup incomplete",
+                                     long: [`Setup incomplete — ask ${helperName()} to finish setup:`, ...setupGaps].join("\n"), warn: true });
   if (problems.length) notes.push({ short: `${problems.length} file problem${problems.length === 1 ? "" : "s"}`,
                                     long: problems.join("\n"), warn: true });
   if (!notes.length) return;
