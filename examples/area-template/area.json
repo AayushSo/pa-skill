@@ -1,0 +1,16 @@
+{
+  "instructions": "AREA.md",
+  "on_load": [
+    {"script": "tools/readinglist.py", "args": ["summary"], "why": "how many items are waiting to be read"}
+  ],
+  "review": [
+    {"script": "tools/readinglist.py", "args": ["list"], "why": "the whole list, for the weekly review"}
+  ],
+  "pages": {"list": "pages/list.html"},
+  "links": [
+    {"id": "list", "label": "Reading list", "page": "list"},
+    {"id": "notes", "label": "Reading notes", "file": "notes.md"}
+  ],
+  "handler": "tools/widget_api.py",
+  "settings": {"items_file": "items.json"}
+}

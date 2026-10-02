@@ -1,0 +1,6 @@
+{
+ "items": [
+  {"id": "r-0001", "title": "An example article", "url": "https://example.com/article", "status": "unread", "added": "2026-01-05"},
+  {"id": "r-0002", "title": "An example paper", "url": "https://example.org/paper", "status": "reading", "added": "2026-01-02"}
+ ]
+}

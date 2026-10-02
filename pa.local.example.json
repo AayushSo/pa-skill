@@ -1,0 +1,30 @@
+{
+  "areas": [
+    {"path": "reading"},
+    {"path": "~/elsewhere/taxes"}
+  ],
+  "assistant_name": "Assistant",
+  "accent": "#2f5d8a",
+  "accent_dark": "#8db8e0",
+  "local_rules": "pa-local.md",
+  "context_file": "context.md",
+  "stale_after_days": 7,
+  "no_stale_check": [],
+  "widget_dir": "_widget",
+  "widget_port": 8765,
+  "widget_days": 7,
+  "widget_browser": "default",
+  "widget_shortcut": null,
+  "link_browser": "default",
+  "links": [
+    {"id": "calendar", "label": "Calendar", "url": "https://calendar.example.com/"}
+  ],
+  "export_dir": "_exports",
+  "snapshot_every_days": 7,
+  "snapshot_keep": 26,
+  "snapshot_exclude": ["*/secrets/*"],
+  "schedule_file": null,
+  "schedule_doc": null,
+  "week_label": "Term",
+  "week_numbering": {"assumed_week1_monday": "2026-01-05", "verified": false}
+}

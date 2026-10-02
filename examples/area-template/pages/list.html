@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Reading list · PA</title>
+<style>
+  :root { --bg: #f6f5f2; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6a66; --line: #e4e2dc;
+          --accent: #2f5d8a; --warn: #b3261e; --chip: #efede8; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #161615; --panel: #1f1f1d; --ink: #ecebe7; --muted: #9c9a94; --line: #34332f;
+            --accent: #8db8e0; --warn: #f28b82; --chip: #2b2a27; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 system-ui, "Segoe UI", sans-serif; }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 14px 16px 60px; }
+  header { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  h1 { font-size: 20px; margin: 0; }
+  .spacer { flex: 1; }
+  a { color: var(--accent); }
+  button, select, input { font: inherit; color: inherit; background: var(--panel); border: 1px solid var(--line);
+                          border-radius: 7px; padding: 3px 8px; }
+  form { display: flex; gap: 6px; flex-wrap: wrap; margin: 12px 0; }
+  form input { flex: 1 1 180px; }
+  .list { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
+  .item { display: flex; gap: 10px; align-items: center; padding: 8px 12px; }
+  .item + .item { border-top: 1px solid var(--line); }
+  .title { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .added { color: var(--muted); font-size: 12px; }
+  .error { color: var(--warn); margin: 8px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header><h1>Reading list</h1><span class="spacer"></span><a href="/">← Tasks</a></header>
+  <form id="add">
+    <input name="title" placeholder="Title" required>
+    <input name="url" type="url" placeholder="https://…" required>
+    <button>Add</button>
+  </form>
+  <div id="error" class="error" hidden></div>
+  <div id="list" class="list"></div>
+</div>
+<script>
+"use strict";
+// Data calls must carry the widget's access key: Quick links pass it as ?k=, and the widget also keeps it in this
+// origin's localStorage.
+let key = new URLSearchParams(location.search).get("k");
+try { if (key) localStorage.setItem("pa-widget-key", key); else key = localStorage.getItem("pa-widget-key"); } catch (_) {}
+const STATUSES = ["unread", "reading", "done", "dropped"];
+
+// "api/..." is relative to this page (/area/<folder>/list), so it reaches this area's handler.
+async function call(path, body) {
+  const r = await fetch(`api/${path}`, { method: body ? "POST" : "GET", cache: "no-store",
+    headers: { "X-PA-Key": key || "", "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.error || r.statusText);
+  return data;
+}
+
+function showError(msg) {
+  const el = document.getElementById("error");
+  el.hidden = !msg;
+  el.textContent = msg || "";
+}
+
+// Outside links go through the widget server, which opens them in the system browser.
+function openExternal(url) {
+  fetch("/api/open", { method: "POST", headers: { "X-PA-Key": key || "", "Content-Type": "application/json" },
+                       body: JSON.stringify({ url }) })
+    .then(r => { if (!r.ok) window.open(url, "_blank", "noopener"); })
+    .catch(() => window.open(url, "_blank", "noopener"));
+}
+
+function row(item) {
+  const el = document.createElement("div");
+  el.className = "item";
+  const title = document.createElement("a");
+  title.className = "title";
+  title.href = item.url;
+  title.textContent = item.title;          // text only: list data is never inserted as HTML
+  title.addEventListener("click", ev => { ev.preventDefault(); openExternal(item.url); });
+  const added = document.createElement("span");
+  added.className = "added";
+  added.textContent = item.added || "";
+  const status = document.createElement("select");
+  for (const s of STATUSES) status.add(new Option(s, s, false, s === item.status));
+  status.addEventListener("change", () => call("status", { id: item.id, status: status.value }).then(load, e => showError(e.message)));
+  el.append(title, added, status);
+  return el;
+}
+
+async function load() {
+  if (!key) return showError("No access key — open the widget first.");
+  try {
+    const data = await call("items");
+    const list = document.getElementById("list");
+    list.replaceChildren(...data.items.map(row));
+    showError("");
+  } catch (e) { showError(`Couldn't load the list: ${e.message}`); }
+}
+
+document.getElementById("add").addEventListener("submit", async ev => {
+  ev.preventDefault();
+  const f = new FormData(ev.target);
+  try {
+    await call("items", { title: f.get("title"), url: f.get("url") });
+    ev.target.reset();
+    load();
+  } catch (e) { showError(e.message); }
+});
+load();
+</script>
+</body>
+</html>

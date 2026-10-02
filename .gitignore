@@ -1,0 +1,22 @@
+# Local setup — never commit
+config.json
+pa.local.json
+*.local.md
+pa-local.md
+
+# Runtime / user data that must never land here
+*.jsonl
+widget-data.json
+tasks.md
+done.md
+about.md
+index.md
+
+# ...except the synthetic example area, which is meant to be copied
+!examples/**/tasks.md
+!examples/**/done.md
+!examples/**/about.md
+
+# Python
+__pycache__/
+*.pyc
