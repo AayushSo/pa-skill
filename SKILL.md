@@ -56,6 +56,7 @@ record every change they report — and do the tasks that are yours (`owner:assi
    judgment below.
 3. **Apply what the user did in the widget** (section 8): `widgetctl.py inbox` → apply each task's events per
    section 3 → `widgetctl.py ack <eids>`. Do this *before* the briefing so the briefing reflects it.
+   Then read `<data_root>/PINGS.md` (section 11), apply each line like a widget comment, and delete the lines you handled.
 4. Run the scanner:
 
 ```bash
@@ -411,7 +412,10 @@ python "$T/widgetctl.py" note <task id> "what they found"
 python "$T/widgetctl.py" capture "the new task" [--area <folder>] [--due D]
 ```
 
-You read those in the inbox like any widget comment (section 3). If you find a record edited from outside — the
+You read those in the inbox like any widget comment (section 3). **Pings:** every area has a `PINGS.md` inbox and
+the data root's is yours; anyone may append a line to any of them, but each side clears only its own (the pings
+section of the data root's CLAUDE.md). To tell an area's next session something, append to `<area>/PINGS.md`.
+If you find a record edited from outside — the
 weekly integrity check reports it — say so in the briefing rather than quietly fixing it.
 
 ## 12. Exporting a reference spreadsheet
