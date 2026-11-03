@@ -75,12 +75,16 @@ This folder holds the user's task records, kept by the `/pa` skill. Any session 
 assistant's ids, its append-only done.md and its weekly integrity check all depend on those files changing only
 through it. Everything else in an area folder is ordinary working material.
 
-To pass something on instead:
+To pass something on instead, tell the user and suggest they run `/pa`, or leave a ping (below).
 
-    python ~/.claude/skills/pa/tools/widgetctl.py note <task id> "what you found"
-    python ~/.claude/skills/pa/tools/widgetctl.py capture "a new task" [--area <folder>]
+## Pings (short messages between sessions)
 
-Or tell the user, and suggest they run `/pa`.
+- Each area has a `PINGS.md` inbox; the one in this folder is the assistant's. Both sides may edit these files.
+- At the start, read the `PINGS.md` of the area you work in. Act on each line, then delete the lines you
+  handled. You may clear only your own area's file.
+- To tell another area's session or the assistant something (for example, you changed a log, a plan doc or a fact
+  its tasks rely on), append one line to their `PINGS.md`:
+  `- YYYY-MM-DD | from <area> | message` (add the task's `id:` if it is about one; optional).
 """
 
 ABOUT = """# {name} — {purpose}
